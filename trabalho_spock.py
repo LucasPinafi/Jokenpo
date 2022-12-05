@@ -4,6 +4,7 @@ from enum import Enum
 from random import choice
 from typing import *
 from time import sleep
+from collections import Counter
 
 
 class Jogo(Enum):
@@ -60,24 +61,39 @@ def conectar_com_jogador() -> socket.socket:
 def jogar(conn: socket.socket):
     while True:
         if QTD_RODADAS > 15:
+            encerrar_conexao(conn)
             break
-        jogada = escolher_jogada()
-        conn.sendall((jogada.value+"\n").encode(FORMAT))
-        JOGADAS.append(jogada)
-        analisar(conn)
+        try:
+            jogada = escolher_jogada()
+            conn.sendall((jogada.value+"\n").encode(FORMAT))
+            JOGADAS.append(jogada)
+            analisar(conn)
+        except ConnectionAbortedError:
+            continue
 
 def receber_jogada(conn: socket.socket):
     while True:
         if QTD_RODADAS > 15:
             break
-        jogada_recebida = conn.recv(HEADER)[2:].decode(FORMAT)
-        RECEBIDAS.append(jogada_recebida)
+        try:
+            jogada_recebida = conn.recv(HEADER)[2:].decode(FORMAT)
+            RECEBIDAS.append(jogada_recebida)
+        except ConnectionAbortedError:
+            continue 
 
 def escolher_jogada() -> Jogo:
     possiveis_jogos = [Jogo.TESOURA, Jogo.PAPEL, Jogo.PEDRA, Jogo.LAGARTO, Jogo.SPOCK]
-    escolha = choice(possiveis_jogos)
-    return escolha
-
+    if QTD_RODADAS < 5:
+        escolha = choice(possiveis_jogos)
+        return escolha
+    else:
+        escolha_mais_jogada = max(set(RECEBIDAS), key= RECEBIDAS.count)
+        jogara = []
+        for jogo in possiveis_jogos:
+            if Jogo.obter_vencedor({jogo.value, escolha_mais_jogada}) == jogo.value and jogo.value != escolha_mais_jogada:
+                jogara.append(jogo)
+        return choice(jogara)
+        
 def analisar(conn: socket.socket):
     global PLACAR, texto_imprimir, QTD_RODADAS
     while len(JOGADAS) != len(RECEBIDAS):
@@ -114,7 +130,7 @@ def analisar(conn: socket.socket):
          encerrar_conexao(conn)
          imprimir_resultado()
     
-    sleep(5)
+    sleep(1)
     print('\n**************NOVA RODADA**************')
 
 def encerrar_conexao(conn: socket.socket) -> None:
